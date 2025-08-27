@@ -1,7 +1,18 @@
-venv/
+# Python stuff
+.venv/
+__pycache__/
 *.pyc
 .env
+.uv/
 
+# Node stuff
+node_modules/
+.svelte-kit/
+build/
+
+# Media
+
+# Misc
 .DS_Store
 Thumbs.db
 .vscode
