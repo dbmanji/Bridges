@@ -39,10 +39,10 @@ migrate((app) => {
         "type": "autodate"
       }
     ],
-    "id": "pbc_3446931122",
+    "id": "pbc_1219621782",
     "indexes": [],
     "listRule": null,
-    "name": "files",
+    "name": "tags",
     "system": false,
     "type": "base",
     "updateRule": null,
@@ -51,7 +51,7 @@ migrate((app) => {
 
   return app.save(collection);
 }, (app) => {
-  const collection = app.findCollectionByNameOrId("pbc_3446931122");
+  const collection = app.findCollectionByNameOrId("pbc_1219621782");
 
   return app.delete(collection);
 })
