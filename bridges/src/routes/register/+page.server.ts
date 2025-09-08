@@ -11,7 +11,6 @@ export const actions: Actions = {
     const password = (fd.get('password') ?? '').toString();
     const confirm  = (fd.get('confirm')  ?? '').toString();
 
-    // Validate username against the regex from the client-side
     const usernameRegex = /^[a-zA-Z0-9_.-]{3,32}$/;
     if (!usernameRegex.test(username)) {
       return fail(400, {
@@ -22,7 +21,6 @@ export const actions: Actions = {
       });
     }
 
-    // Validate password requirements
     if (password.length < 6) {
       return fail(400, {
         success: false,
@@ -57,9 +55,6 @@ export const actions: Actions = {
         passwordConfirm: confirm,
         verified: true
       });
-
-      // The line below was removed as it is redundant.
-      // The .create() method automatically authenticates.
 
       event.cookies.set('pb_auth', pb.authStore.token ?? '', {
         path: '/',

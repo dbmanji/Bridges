@@ -97,6 +97,7 @@
 
 <style>
 	/* maybe this will fix the input box overflowing? idk lol just test/bandaid */
+	/* update: actually maybe this is the proper way.. */
 	:global(*),
 	:global(*::before),
 	:global(*::after) {
