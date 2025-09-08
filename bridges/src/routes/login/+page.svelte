@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { navigating } from '$app/state';
+	import type { SubmitFunction } from '@sveltejs/kit';
 
 	export let form:
 		| {
@@ -12,6 +12,16 @@
 
 	let showPassword = false;
 	let passwordFieldType: 'password' | 'text' = 'password';
+
+	let submitting = false;
+
+	const onSubmit: SubmitFunction = () => {
+		submitting = true;
+		return async ({ update }) => {
+			await update();
+			submitting = false;
+		};
+	};
 
 	function togglePassword() {
 		showPassword = !showPassword;
@@ -25,7 +35,7 @@
 		<div class="muted">privacy-first file links</div>
 	</header>
 
-	<form method="POST" action="?/login" autocomplete="on" use:enhance>
+	<form method="POST" action="?/login" autocomplete="on" use:enhance={onSubmit}>
 		<fieldset>
 			<legend>sign in</legend>
 
@@ -69,8 +79,8 @@
 					<input type="checkbox" name="remember" />
 					remember
 				</label>
-				<button type="submit" disabled={!!navigating}>
-    				{navigating ? 'signing in...' : 'enter'}
+				<button type="submit" disabled={submitting}>
+  					{submitting ? 'signing in...' : 'enter'}
 				</button>
 			</div>
 
