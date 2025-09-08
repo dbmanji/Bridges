@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { navigating } from '$app/stores';
+	import { navigating } from '$app/state';
 
 	export let form:
 		| {
@@ -38,7 +38,6 @@
 				autocomplete="username"
 				aria-invalid={form?.errors?.username ? 'true' : 'false'}
 				aria-describedby={form?.errors?.username ? 'u-err' : undefined}
-				autofocus
 			/>
 
 			{#if form?.errors?.username}
@@ -70,8 +69,8 @@
 					<input type="checkbox" name="remember" />
 					remember
 				</label>
-				<button type="submit" disabled={$navigating}>
-					{$navigating ? 'signing in...' : 'enter'}
+				<button type="submit" disabled={!!navigating}>
+    				{navigating ? 'signing in...' : 'enter'}
 				</button>
 			</div>
 
