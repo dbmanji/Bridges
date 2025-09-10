@@ -89,6 +89,14 @@
 </main>
 
 <style>
+	/* maybe this will fix the input box overflowing? idk lol just test/bandaid */
+	/* update: actually maybe this is the proper way.. */
+	:global(*),
+	:global(*::before),
+	:global(*::after) {
+		box-sizing: border-box;
+	}
+
 	:global(:root) {
 		--bg: #232025;
 		--fg: #efd5c5;
