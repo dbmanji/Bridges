@@ -9,18 +9,35 @@
 	let viewOnce: boolean = false;
 	let embedPreview: boolean = false;
 
-	function handleSubmit() {
-		// You can handle form submission here, e.g., send config to API
-		console.log({
-			expires,
-			visibility,
-			password: visibility === 'password' ? password : null,
-			downloadLimit: downloadLimitEnabled ? downloadLimit : null,
-			viewOnce,
-			embedPreview
+	async function handleSubmit() {
+	const config = {
+		expires,
+		visibility,
+		password: visibility === 'password' ? password : null,
+		downloadLimit: downloadLimitEnabled ? downloadLimit : null,
+		viewOnce,
+		embedPreview
+	};
+
+	try {
+		const res = await fetch('/api/config', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(config)
 		});
-		alert('Configuration saved ✅');
+
+		const result = await res.json();
+
+		if (result.success) {
+			alert(`✅ Link generated: ${result.link}`);
+		} else {
+			alert('❌ Failed to save config');
+		}
+	} catch (err) {
+		console.error(err);
+		alert('⚠️ Error connecting to backend');
 	}
+}
 </script>
 
 <main>
