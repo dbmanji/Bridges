@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-    
+
 	export let form:
 		| {
 				message?: string;
 				success?: boolean;
-				errors?: { username?: string; password?: string; confirm?: string };
+				errors?: { username?: string; password?: string; passwordConfirm?: string };
 				values?: { username?: string };
 		  }
 		| undefined;
@@ -17,22 +17,23 @@
 		<div class="muted">privacy-first file links</div>
 	</header>
 
-	<form method="POST" action="?/register" autocomplete="on" use:enhance>
+	<form method="POST" autocomplete="on" use:enhance>
 		<fieldset>
 			<legend>create account</legend>
 
 			<label for="u">username</label>
 			<input
-				id="u"
-				name="username"
-				required
-				pattern="^[a-zA-Z0-9_.-]{3,32}$"
-				autocomplete="username"
-				value={form?.values?.username ?? ''}
-				aria-invalid={form?.errors?.username ? 'true' : 'false'}
-				aria-describedby={form?.errors?.username ? 'u-err' : 'u-help'}
+			id="u"
+			name="username"
+			required
+			pattern="^[a-zA-Z0-9_.-]{4,32}$"
+			autocomplete="username"
+			value={form?.values?.username ?? ''}
+			aria-invalid={form?.errors?.username ? 'true' : 'false'}
+			aria-describedby={form?.errors?.username ? 'u-err' : 'u-help'}
 			/>
-			<small id="u-help" class="muted">3 - 32 chars: letters, numbers, _ . -</small>
+			<small id="u-help" class="muted">Username must be 4-32 characters long and can include letters, numbers, underscores (_), periods (.), and hyphens (-).</small>
+
 
 			{#if form?.errors?.username}
 				<div id="u-err" class="err">{form.errors.username}</div>
@@ -40,18 +41,18 @@
 
 			<label for="p1">password</label>
 			<input
-				id="p1"
-				name="password"
-				type="password"
-				required
-				autocomplete="new-password"
-				minlength="6"
-				pattern={'^(?=.*\\d).{6,}$'}
-				title="Password must be at least 6 characters long and contain at least one number."
-				aria-invalid={form?.errors?.password ? 'true' : 'false'}
-				aria-describedby={form?.errors?.password ? 'p1-err' : 'p1-help'}
+			id="p1"
+			name="password"
+			type="password"
+			required
+			autocomplete="new-password"
+			minlength="4"
+			title="At least 4 characters."
+			aria-invalid={form?.errors?.password ? 'true' : 'false'}
+			aria-describedby={form?.errors?.password ? 'p1-err' : 'p1-help'}
 			/>
-			<small id="p1-help" class="muted">6+ chars, with at least one number.</small>
+			<small id="p1-help" class="muted">At least 4 characters.</small>
+
 
 			{#if form?.errors?.password}
 				<div id="p1-err" class="err">{form.errors.password}</div>
@@ -60,16 +61,15 @@
 			<label for="p2">confirm password</label>
 			<input
 				id="p2"
-				name="confirm"
-				type="password"
+				name="passwordConfirm" type="password"
 				required
 				autocomplete="new-password"
-				aria-invalid={form?.errors?.confirm ? 'true' : 'false'}
-				aria-describedby={form?.errors?.confirm ? 'p2-err' : undefined}
+				aria-invalid={form?.errors?.passwordConfirm ? 'true' : 'false'}
+				aria-describedby={form?.errors?.passwordConfirm ? 'p2-err' : undefined}
 			/>
 
-			{#if form?.errors?.confirm}
-				<div id="p2-err" class="err">{form.errors.confirm}</div>
+			{#if form?.errors?.passwordConfirm}
+				<div id="p2-err" class="err">{form.errors.passwordConfirm}</div>
 			{/if}
 
 			<div class="row">
@@ -130,7 +130,6 @@
 		display: block;
 		margin: 0.5rem 0 0.25rem;
 	}
-	input[type='text'],
 	input[type='password'],
 	input:not([type]) {
 		width: 100%;

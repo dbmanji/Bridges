@@ -1,100 +1,51 @@
-import type { Actions } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
-import PocketBase, { ClientResponseError } from 'pocketbase';
-
-const pb = new PocketBase('http://127.0.0.1:8090');
+import { ClientResponseError } from 'pocketbase';
+import type { Actions } from './$types';
 
 export const actions: Actions = {
-  register: async (event) => {
-    const fd = await event.request.formData();
-    const username = (fd.get('username') ?? '').toString().trim();
-    const password = (fd.get('password') ?? '').toString();
-    const confirm  = (fd.get('confirm')  ?? '').toString();
+	default: async ({ locals, request }) => {
+		const data = Object.fromEntries(await request.formData()) as {
+			username: string;
+			password: string;
+			passwordConfirm: string;
+		};
 
-    const usernameRegex = /^[a-zA-Z0-9_.-]{3,32}$/;
-    if (!usernameRegex.test(username)) {
-      return fail(400, {
-        success: false,
-        message: 'Registration failed. Please fix the errors below.',
-        errors: { username: 'Username must be 3-32 characters and can only contain letters, numbers, and _, ., -' },
-        values: { username }
-      });
-    }
+		if (data.password !== data.passwordConfirm) {
+			return fail(400, {
+				errors: { passwordConfirm: 'Passwords do not match.' },
+				values: { username: data.username }
+			});
+		}
 
-    if (password.length < 6) {
-      return fail(400, {
-        success: false,
-        message: 'Registration failed. Please fix the errors below.',
-        errors: { password: 'Password must be at least 6 characters long.' },
-        values: { username }
-      });
-    }
+		try {
+			await locals.pb.collection('users').create({
+				username: data.username,
+				password: data.password,
+				passwordConfirm: data.passwordConfirm
+			});
 
-    if (!/\d/.test(password)) {
-        return fail(400, {
-          success: false,
-          message: 'Registration failed. Please fix the errors below.',
-          errors: { password: 'Password must contain at least one number.' },
-          values: { username }
-        });
-    }
+			await locals.pb.collection('users').authWithPassword(data.username, data.password);
 
-    if (password !== confirm) {
-      return fail(400, {
-        success: false,
-        message: 'Registration failed. Please fix the errors below.',
-        errors: { confirm: 'Passwords do not match' },
-        values: { username }
-      });
-    }
+		} catch (e) {
+			console.error(e);
 
-    try {
-      await pb.collection('users').create({
-        username,
-        password,
-        passwordConfirm: confirm,
-        verified: true
-      });
+			if (e instanceof ClientResponseError) {
+				const errors: Record<string, string> = {};
+				for (const key in e.response.data) {
+					errors[key] = e.response.data[key].message;
+				}
+				return fail(e.status, {
+					errors,
+					values: { username: data.username }
+				});
+			}
 
-      event.cookies.set('pb_auth', pb.authStore.token ?? '', {
-        path: '/',
-        httpOnly: true,
-        sameSite: 'Lax',
-        secure: import.meta.env.PROD,
-        maxAge: 60 * 60 * 24 * 30
-      });
+			return fail(500, {
+				message: 'An unexpected error occurred. Please try again.',
+				values: { username: data.username }
+			});
+		}
 
-      throw redirect(303, '/dashboard');
-    } catch (err) {
-      if (err instanceof ClientResponseError) {
-        const errors: Record<string, string> = {};
-        const data = (err as any).response?.data ?? {};
-
-        for (const key in data) {
-          const msg = data[key]?.message;
-          if (msg) {
-            if (key === 'passwordConfirm') errors.confirm = msg;
-            else errors[key] = msg;
-          }
-        }
-
-        if (!Object.keys(errors).length && (err as any).response?.message) {
-          errors.username = (err as any).response.message;
-        }
-
-        return fail(400, {
-          success: false,
-          message: 'Registration failed. Please fix the errors below.',
-          errors,
-          values: { username }
-        });
-      }
-
-      return fail(500, {
-        success: false,
-        message: 'An unexpected error occurred. Please try again.',
-        values: { username }
-      });
-    }
-  }
+		redirect(303, '/dashboard');
+	}
 };
