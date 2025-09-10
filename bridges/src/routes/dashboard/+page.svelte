@@ -65,22 +65,39 @@
 	</section>
 
 	<!-- quick -->
-	<section class="section-box">
-		<h2 class="section-title">quick</h2>
-		<div class="section-content">
-			<div class="actions">
-				<input
-		type="file"
-		on:change={(e) => (file = (e.target as HTMLInputElement).files?.[0] ?? null)}
-	/>
-	<button on:click={uploadFile}>upload file</button>
-	<button>new link</button>
-	<button>your files</button>
-	<button>your links</button>
-			</div>
-			<p class="muted">drag & drop may be supported if enabled</p>
+<section class="section-box">
+	<h2 class="section-title">quick</h2>
+	<div class="section-content">
+		<!-- Dropzone -->
+		<div class="dropzone">
+			<!-- hidden file input -->
+			<input 
+				type="file" 
+				id="fileUpload" 
+				class="hidden-input"
+				on:change={(e) => file = e.target.files?.[0] ?? null}
+			/>
+			<!-- Custom buttons inside dropzone -->
+			<label for="fileUpload" class="custom-file-btn">
+				select file
+			</label>
+			
+{#if file}
+  <p class="muted">📂 Selected: {file.name} ({Math.round(file.size / 1024)} KB)</p>
+{/if}
+			<button on:click={uploadFile}>upload file</button>
 		</div>
-	</section>
+
+		<!-- Quick actions -->
+		<div class="quick-actions">
+			<button>new link</button>
+			<button>your files</button>
+			<button>your links</button>
+		</div>
+
+		<p class="muted">drag & drop may be supported if enabled</p>
+	</div>
+</section>
 
 	<!-- overview -->
 	<section class="section-box">
@@ -260,4 +277,43 @@
 		padding: 1.2rem;     /* more breathing room inside */
 		margin-top: 0.8rem;  /* space between title and content */
 	}
+	.hidden-input {
+    	display: none;
+  	}
+
+  	.custom-file-btn {
+  		padding: 0.4rem 0.7rem;
+  		border: 1px solid var(--accent);
+  		background: transparent;
+  		color: var(--fg);
+  		cursor: pointer;
+  		display: inline-block;
+  		text-align: center;
+	}
+
+	.custom-file-btn:hover {
+  		background: var(--accent);
+  		color: var(--bg);
+	}
+	.dropzone {
+	border: 2px dashed var(--accent);
+	border-radius: 6px;
+	padding: 2rem;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.8rem;
+	margin-bottom: 1rem;
+	}
+	.quick-actions {
+		display: flex;
+		gap: 0.6rem;
+		margin-top: 0.8rem;
+	}
+	.quick-actions button {
+		flex: 1; /* equal width */
+		text-align: center;
+	}
+
 </style>
