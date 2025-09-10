@@ -1,28 +1,59 @@
 import { fail, redirect } from '@sveltejs/kit';
-import type { Actions } from './$types';
-import { ClientResponseError } from 'pocketbase';
+import type { Actions, PageServerLoad } from './$types';
 
-// this is all placeholder for now. we need to setup pocketbase properly. initial setup seems absolutely wrong to me - hakimi
+export const load: PageServerLoad = async ({ locals }) => {
+  // send to dashboard if alr logged in	
+  if (locals.user) {
+    throw redirect(302, '/dashboard');
+  }
+  return {};
+};
+
 export const actions: Actions = {
-	login: async ({ request, locals }) => {
-		const formData = await request.formData();
-		const data = Object.fromEntries(formData);
+  login: async ({ request, locals }) => {
+    const form = await request.formData();
+    const usernameOrEmail = String(form.get('username') ?? '').trim();
+    const password = String(form.get('password') ?? '');
 
-		try {
-			await locals.pb.collection('users').authWithPassword(data.username as string, data.password as string);
+    if (!usernameOrEmail || !password) {
+      return fail(400, { message: 'Missing username or password.' });
+    }
 
-		} catch (err) {
-			if (err instanceof ClientResponseError) {
-				console.error('PocketBase Auth Error:', err);
-				return fail(err.status, {
-					message: 'Invalid username or password. Please try again.'
-				});
-			}
-			console.error('Generic Error:', err);
-			return fail(500, {
-				message: 'Something went wrong on our end. Please try again later.'
-			});
-		}
-		throw redirect(303, '/dashboard');
-	}
+    try {
+      await locals.pb.collection('users').authWithPassword(usernameOrEmail, password);
+    } catch (err) {
+      return fail(400, { message: 'Invalid credentials.' });
+    }
+
+    throw redirect(303, '/dashboard');
+  },
+
+  register: async ({ request, locals }) => {
+    const form = await request.formData();
+    const username = String(form.get('username') ?? '').trim();
+    const password = String(form.get('password') ?? '');
+    const passwordConfirm = String(form.get('passwordConfirm') ?? '');
+
+    if (!username || !password || !passwordConfirm) {
+      return fail(400, { message: 'Please fill in all fields.' });
+    }
+    if (password !== passwordConfirm) {
+      return fail(400, { message: 'Passwords do not match.' });
+    }
+
+    try {
+      await locals.pb.collection('users').create({
+        username,
+        password,
+        passwordConfirm
+      });
+
+      await locals.pb.collection('users').authWithPassword(username, password);
+    } catch (err: any) {
+
+      return fail(400, { message: 'Registration failed.', detail: err?.message });
+    }
+
+    throw redirect(303, '/dashboard');
+  }
 };

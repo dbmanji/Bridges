@@ -42,9 +42,8 @@
 			<label for="u">username</label>
 			<input
 				id="u"
-				name="username"
-				required
-				pattern="^[a-zA-Z0-9_.-]{3,32}$"
+    			name="username"
+    			required
 				autocomplete="username"
 				aria-invalid={form?.errors?.username ? 'true' : 'false'}
 				aria-describedby={form?.errors?.username ? 'u-err' : undefined}
