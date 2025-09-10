@@ -3,88 +3,119 @@
 	import type { PageData } from './$types';
 
 	export let data: PageData;
+
+	let file: File | null = null;
+
+	async function uploadFile() {
+		if (!file) {
+			alert('Please select a file first!');
+			return;
+		}
+
+		const formData = new FormData();
+		formData.append('file', file);
+
+		try {
+			const res = await fetch('/api/upload', {
+				method: 'POST',
+				body: formData
+			});
+
+			if (!res.ok) throw new Error(await res.text());
+			alert('File uploaded successfully ✅');
+		} catch (err) {
+			alert('Upload failed ❌ ' + err);
+		}
+	}
 </script>
 
 <main>
-	<h1>bridges / dashboard</h1>
-	<p>welcome, <strong>@{data.user?.username ?? 'guest'}</strong> – minimal overview + quick actions</p>
+	<header class="page-header">
+		<div>
+			<h1>bridges / dashboard</h1>
+			<p class="subtitle">welcome, <strong>@{data.user?.username ?? 'guest'}</strong> – minimal overview + quick actions</p>
+		</div>
+
+		<form method="POST" action="?/logout" use:enhance class="logout-form">
+			<button type="submit" class="logout">Logout</button>
+		</form>
+	</header>
 
 	<!-- search -->
 	<section class="section-box">
-  <h2 class="section-title">search</h2>
-  <div class="section-content">
-		<div class="row">
-			<div>
-				<label>query</label>
-				<input type="text" placeholder="find by name or tag" />
+		<h2 class="section-title">search</h2>
+		<div class="section-content">
+			<div class="row">
+				<div>
+					<label>query</label>
+					<input type="text" placeholder="find by name or tag" />
+				</div>
+				<div>
+					<label>scope</label>
+					<input type="text" placeholder="all" />
+				</div>
+				<div>
+					<label>sort</label>
+					<input type="text" placeholder="recent" />
+				</div>
+				<button>search</button>
 			</div>
-			<div>
-				<label>scope</label>
-				<input type="text" placeholder="all" />
-			</div>
-			<div>
-				<label>sort</label>
-				<input type="text" placeholder="recent" />
-			</div>
-			<button>search</button>
+			<p class="tip">tip: tags like <span class="tag">work</span> <span class="tag">audio</span> <span class="tag">private</span></p>
 		</div>
-		<p class="tip">tip: tags like <span class="tag">work</span> <span class="tag">audio</span> <span class="tag">private</span></p>
-  </div>
-</section>
+	</section>
 
 	<!-- quick -->
-	
-<section class="section-box">
-  <h2 class="section-title">quick</h2>
-  <div class="section-content">
-		<div class="actions">
-			<button>upload file</button>
-			<button>new link</button>
-			<button>your files</button>
-			<button>your links</button>
+	<section class="section-box">
+		<h2 class="section-title">quick</h2>
+		<div class="section-content">
+			<div class="actions">
+				<input
+		type="file"
+		on:change={(e) => (file = (e.target as HTMLInputElement).files?.[0] ?? null)}
+	/>
+	<button on:click={uploadFile}>upload file</button>
+	<button>new link</button>
+	<button>your files</button>
+	<button>your links</button>
+			</div>
+			<p class="muted">drag & drop may be supported if enabled</p>
 		</div>
-		<p class="muted">drag & drop may be supported if enabled</p>
-  </div>
-</section>
-	
+	</section>
 
 	<!-- overview -->
 	<section class="section-box">
-  <h2 class="section-title">overview</h2>
-  <div class="section-content">
-  <table>
-    <tbody>
-      <tr>
-        <td>storage used</td>
-        <td>3.1 GB</td>
-        <td>files</td>
-        <td>74</td>
-      </tr>
-      <tr>
-        <td>users</td>
-        <td>12</td>
-        <td>links</td>
-        <td>45</td>
-      </tr>
-      <tr>
-        <td>uploads today</td>
-        <td>8</td>
-        <td>downloads</td>
-        <td>220</td>
-      </tr>
-      <tr>
-        <td>active sessions</td>
-        <td>5</td>
-        <td>errors</td>
-        <td>0</td>
-      </tr>
-    </tbody>
-  </table>
-
-  </div>
-</section>
-
-
+		<h2 class="section-title">overview</h2>
+		<div class="section-content">
+			<table>
+				<tbody>
+					<tr>
+						<td>storage used</td>
+						<td>3.1 GB</td>
+						<td>files</td>
+						<td>74</td>
+					</tr>
+					<tr>
+						<td>links active</td>
+						<td>26</td>
+						<td>expiring soon</td>
+						<td>3</td>
+					</tr>
+					<tr>
+						<td>views (30d)</td>
+						<td>1,204</td>
+						<td>downloads (30d)</td>
+						<td>318</td>
+					</tr>
+					<tr>
+						<td>last login</td>
+						<td>2025-09-04 10:22</td>
+						<td>account status</td>
+						<td>OK</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</section>
 </main>
 
 <style>
@@ -101,29 +132,51 @@
 		color: var(--fg);
 		font: 15px/1.5 monospace;
 	}
+
 	main {
 		max-width: 900px;
 		margin: 5vh auto 0;
 		padding: 0 1rem 5rem;
 	}
+
+	/* header with logout on the right */
+	.page-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
 	h1 {
 		font-size: 1.1rem;
-		margin-bottom: 0.3rem;
+		margin: 0 0 0.25rem 0;
 	}
-	h2 {
-		font-size: 0.9rem;
-		font-weight: normal;
+	.subtitle {
+		margin: 0;
 		color: var(--muted);
-		margin-bottom: 0.5rem;
+		font-size: 0.9rem;
 	}
 	strong {
 		color: var(--accent);
 	}
-	.box {
-		border: 1px solid var(--line);
-		padding: 1rem;
-		margin: 1.5rem 0;
+
+	.logout-form {
+		margin-left: auto;
 	}
+	.logout {
+		padding: 0.45rem 0.85rem;
+		border: 1px solid var(--accent);
+		background: transparent;
+		color: var(--fg);
+		cursor: pointer;
+		border-radius: 4px;
+	}
+	.logout:hover {
+		background: var(--accent);
+		color: var(--bg);
+	}
+
+	/* form controls & sections */
 	.row {
 		display: grid;
 		grid-template-columns: repeat(4, 1fr) auto;
@@ -184,26 +237,27 @@
 		padding: 0.4rem 0.6rem;
 		border: 1px solid var(--line);
 	}
+
+	/* section title-on-border layout */
 	.section-box {
-  margin: 2rem 0;
-  position: relative;
+		margin: 2rem 0;
+		position: relative;
 	}
 	.section-title {
-  		font-size: 1rem;
-  		text-transform: uppercase;
-  		color: var(--muted);
-  		margin: 0;
-  		padding: 0 0.5rem;
-  		position: relative;
-  		top: 0.7rem; /* pushes title down onto the border */
-  		background: var(--bg);
-  		display: inline-block;
+		font-size: 1rem;
+		text-transform: uppercase;
+		color: var(--muted);
+		margin: 0;
+		padding: 0 0.5rem;
+		position: relative;
+		top: 0.7rem; /* pushes title down onto the border */
+		background: var(--bg);
+		display: inline-block;
 	}
 	.section-content {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 1.2rem;
-  margin-top: 0.8rem; /* pulls box up to meet title */
-}
-
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		padding: 1.2rem;     /* more breathing room inside */
+		margin-top: 0.8rem;  /* space between title and content */
+	}
 </style>
