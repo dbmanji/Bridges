@@ -86,6 +86,9 @@
   <p class="muted">📂 Selected: {file.name} ({Math.round(file.size / 1024)} KB)</p>
 {/if}
 			<button on:click={uploadFile}>upload file</button>
+			<a href="/upload">
+			<button on:click={() => (showConfigure = true)}>configure file</button>
+			</a>
 		</div>
 
 		<!-- Quick actions -->
