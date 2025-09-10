@@ -1,31 +1,183 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { goto } from '$app/navigation';
+	import { pb } from '$lib/pocketbase';
+	import { browser } from '$app/environment';
 	import type { PageData } from './$types';
 
-	export let data: PageData;
+	export let data;
 
-	let file: File | null = null;
+	// State for file upload
+	let selectedFile: File | null = null;
+	let isUploading: boolean = false;
+	let uploadProgress: number = 0;
+	let uploadError: string = '';
 
-	async function uploadFile() {
-		if (!file) {
-			alert('Please select a file first!');
+	// Configuration state
+	let expires: string = '24h'; // default
+	let visibility: string = 'public';
+	let password: string = '';
+	let downloadLimitEnabled: boolean = false;
+	let downloadLimit: number = 10;
+	let viewOnce: boolean = false;
+	let embedPreview: boolean = false;
+
+	// State for generated link
+	let generatedLink: string = '';
+	let isGenerating: boolean = false;
+	let error: string = '';
+	let showConfigure: boolean = false;
+
+	// Convert expiration string to timestamp
+	function getExpirationTimestamp(expiration: string): number | null {
+		if (expiration === 'never') return null;
+		
+		const now = Date.now();
+		switch (expiration) {
+			case '1h':
+				return now + (1 * 60 * 60 * 1000);
+			case '24h':
+				return now + (24 * 60 * 60 * 1000);
+			case '7d':
+				return now + (7 * 24 * 60 * 60 * 1000);
+			case '30d':
+				return now + (30 * 24 * 60 * 60 * 1000);
+			case '1y':
+				return now + (365 * 24 * 60 * 60 * 1000);
+			default:
+				return now + (24 * 60 * 60 * 1000); // default 24h
+		}
+	}
+
+	// Generate a unique short ID for the share link
+	function generateShortId(length: number = 8): string {
+		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+		let result = '';
+		for (let i = 0; i < length; i++) {
+			result += chars.charAt(Math.floor(Math.random() * chars.length));
+		}
+		return result;
+	}
+
+	// Handle file selection
+	function handleFileSelect(event: Event) {
+		const input = event.target as HTMLInputElement;
+		if (input.files && input.files[0]) {
+			selectedFile = input.files[0];
+			uploadError = '';
+		}
+	}
+
+	// Upload file to PocketBase
+	async function handleUpload() {
+		if (!selectedFile) {
+			uploadError = 'Please select a file first';
 			return;
 		}
 
-		const formData = new FormData();
-		formData.append('file', file);
+		isUploading = true;
+		uploadProgress = 0;
+		uploadError = '';
 
 		try {
-			const res = await fetch('/api/upload', {
+			// Create a new record in the files collection
+			const formData = new FormData();
+			formData.append('file', selectedFile);
+
+			const response = await fetch('/api/upload', {
 				method: 'POST',
-				body: formData
+				body: formData,
 			});
 
-			if (!res.ok) throw new Error(await res.text());
-			alert('File uploaded successfully ✅');
+			if (!response.ok) {
+				throw new Error('Upload failed');
+			}
+
+			const result = await response.json();
+			const fileId = result.id;
+
+			// Navigate to the configuration page with the file ID
+			goto(`/configure?fileId=${fileId}`);
+			
 		} catch (err) {
-			alert('Upload failed ❌ ' + err);
+			console.error('Upload error:', err);
+			uploadError = err instanceof Error ? err.message : 'Failed to upload file';
+		} finally {
+			isUploading = false;
 		}
+	}
+
+	// Handle form submission and generate share link
+	async function handleSubmit() {
+		if (!selectedFile) {
+			error = 'No file selected';
+			return;
+		}
+
+		isGenerating = true;
+		error = '';
+
+		try {
+			// Get current user (if authenticated)
+			const currentUser = pb.authStore.model;
+
+			// Prepare the share record data
+			const shareData = {
+				file: selectedFile.name,
+				owner: currentUser ? currentUser.id : null,
+				expires_at: getExpirationTimestamp(expires),
+				visibility: visibility,
+				password: visibility === 'password' ? password : null,
+				download_limit: downloadLimitEnabled ? downloadLimit : null,
+				download_count: 0,
+				view_once: viewOnce,
+				embed_preview: embedPreview,
+				short_id: generateShortId(),
+				is_active: true
+			};
+
+			// Create the share record in PocketBase
+			const shareRecord = await pb.collection('shares').create(shareData);
+
+			// Generate the share link (fixed the extra space in URL)
+			const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
+			generatedLink = `${baseUrl}/share/${shareRecord.short_id}`;
+
+			// Show success message and copy link to clipboard
+			alert('Share link generated successfully!');
+			
+			// Copy to clipboard if in browser
+			if (browser && navigator.clipboard) {
+				await navigator.clipboard.writeText(generatedLink);
+				alert('Link copied to clipboard!');
+			}
+
+		} catch (err) {
+			console.error('Error generating share link:', err);
+			error = err instanceof Error ? err.message : 'Failed to generate share link';
+			alert('Error: ' + error);
+		} finally {
+			isGenerating = false;
+		}
+	}
+
+	// Validate form before submission
+	function validateForm() {
+		if (visibility === 'password' && !password.trim()) {
+			alert('Please enter a password for password-protected sharing');
+			return false;
+		}
+		if (downloadLimitEnabled && (downloadLimit <= 0 || isNaN(downloadLimit))) {
+			alert('Please enter a valid download limit (greater than 0)');
+			return false;
+		}
+		return true;
+	}
+
+	// Handle form submission with validation
+	async function handleFormSubmit() {
+		if (!validateForm()) return;
+		await handleSubmit();
 	}
 </script>
 
@@ -41,66 +193,214 @@
 		</form>
 	</header>
 
-	<!-- search -->
+	<!-- quick -->
 	<section class="section-box">
-		<h2 class="section-title">search</h2>
+		<h2 class="section-title">quick</h2>
 		<div class="section-content">
-			<div class="row">
-				<div>
-					<label>query</label>
-					<input type="text" placeholder="find by name or tag" />
-				</div>
-				<div>
-					<label>scope</label>
-					<input type="text" placeholder="all" />
-				</div>
-				<div>
-					<label>sort</label>
-					<input type="text" placeholder="recent" />
-				</div>
-				<button>search</button>
+			<!-- Dropzone -->
+			<div class="dropzone">
+				<!-- hidden file input -->
+				<input 
+					type="file" 
+					id="fileUpload" 
+					class="hidden-input"
+					on:change={handleFileSelect}
+				/>
+				<!-- Custom buttons inside dropzone -->
+				<label for="fileUpload" class="custom-file-btn">
+					select file
+				</label>
+				
+				{#if selectedFile}
+					<p class="muted">📂 Selected: {selectedFile.name} ({Math.round(selectedFile.size / 1024)} KB)</p>
+					{#if isUploading}
+						<div class="progress-bar">
+							<div class="progress" style="width: {uploadProgress}%"></div>
+						</div>
+						<p class="upload-status">Uploading...</p>
+					{/if}
+				{/if}
+				
+				{#if selectedFile && !isUploading}
+					<button on:click={handleUpload} class="upload-btn">upload file</button>
+				{:else if isUploading}
+					<button disabled class="upload-btn disabled">uploading...</button>
+				{:else}
+					<button disabled class="upload-btn disabled">upload file</button>
+				{/if}
 			</div>
-			<p class="tip">tip: tags like <span class="tag">work</span> <span class="tag">audio</span> <span class="tag">private</span></p>
+
+			<!-- Quick actions -->
+			<div class="quick-actions">
+				<button on:click={() => goto('/files')} class="action-btn files-btn">your files</button>
+				<button on:click={() => goto('/links')} class="action-btn links-btn">your links</button>
+			</div>
+
+			<p class="muted">drag & drop may be supported if enabled</p>
+			
+			{#if uploadError}
+				<div class="error-message">
+					{uploadError}
+				</div>
+			{/if}
 		</div>
 	</section>
 
-	<!-- quick -->
-<section class="section-box">
-	<h2 class="section-title">quick</h2>
-	<div class="section-content">
-		<!-- Dropzone -->
-		<div class="dropzone">
-			<!-- hidden file input -->
-			<input 
-				type="file" 
-				id="fileUpload" 
-				class="hidden-input"
-				on:change={(e) => file = e.target.files?.[0] ?? null}
-			/>
-			<!-- Custom buttons inside dropzone -->
-			<label for="fileUpload" class="custom-file-btn">
-				select file
-			</label>
+	<!-- Configuration Section (only shown when "configure file" is clicked) -->
+	{#if showConfigure && selectedFile}
+		<section class="section-box">
+			<h2 class="section-title">configure file</h2>
 			
-{#if file}
-  <p class="muted">📂 Selected: {file.name} ({Math.round(file.size / 1024)} KB)</p>
-{/if}
-			<button on:click={uploadFile}>upload file</button>
-			<a href="/upload">
-			<button on:click={() => (showConfigure = true)}>configure file</button>
-			</a>
-		</div>
+			<div class="section-content">
+				<section class="config-subsection">
+					<h3 class="section-subtitle">expiration</h3>
+					<div class="select-wrapper">
+						<select
+							name="expires"
+							bind:value={expires}
+							class="custom-select"
+						>
+							{#each [
+								{ value: '1h', label: '1 hour' },
+								{ value: '24h', label: '24 hours' },
+								{ value: '7d', label: '7 days' },
+								{ value: '30d', label: '30 days' },
+								{ value: '1y', label: '1 year' },
+								{ value: 'never', label: 'Never expire' }
+							] as option}
+								<option value={option.value}>
+									{option.label}
+								</option>
+							{/each}
+						</select>
+					</div>
+				</section>
 
-		<!-- Quick actions -->
-		<div class="quick-actions">
-			<button>new link</button>
-			<button>your files</button>
-			<button>your links</button>
-		</div>
+				<section class="config-subsection">
+					<h3 class="section-subtitle">visibility</h3>
+					<div class="select-wrapper">
+						<select
+							name="visibility"
+							bind:value={visibility}
+							class="custom-select"
+						>
+							{#each [
+								{ value: 'public', label: 'Public – anyone with link' },
+								{ value: 'unlisted', label: 'Unlisted – not searchable' },
+								{ value: 'password', label: 'Password protected' }
+							] as option}
+								<option value={option.value}>
+									{option.label}
+								</option>
+							{/each}
+						</select>
+					</div>
 
-		<p class="muted">drag & drop may be supported if enabled</p>
-	</div>
-</section>
+					{#if visibility === 'password'}
+						<div class="input-group" style="margin-top: 1rem;">
+							<label>Set password</label>
+							<input
+								type="password"
+								bind:value={password}
+								placeholder="Enter password"
+								style="width: 100%;"
+							/>
+						</div>
+					{/if}
+				</section>
+
+				<section class="config-subsection">
+					<h3 class="section-subtitle">limits & behavior</h3>
+					<div class="toggle-row">
+						<label class="toggle-label-large">
+							<span>Download limit</span>
+						</label>
+						<div class="toggle-controls">
+							<input
+								type="checkbox"
+								bind:checked={downloadLimitEnabled}
+								class="toggle-checkbox"
+							/>
+							{#if downloadLimitEnabled}
+								<input
+									type="number"
+									min="1"
+									bind:value={downloadLimit}
+									class="download-limit-input"
+								/>
+							{/if}
+						</div>
+					</div>
+
+					<div class="toggle-row">
+						<label class="toggle-label-large">
+							<span>View once (auto-delete after first view)</span>
+						</label>
+						<div class="toggle-controls">
+							<input
+								type="checkbox"
+								bind:checked={viewOnce}
+								class="toggle-checkbox"
+							/>
+						</div>
+					</div>
+
+					<div class="toggle-row">
+						<label class="toggle-label-large">
+							<span>Embed preview (opens in page, no direct download)</span>
+						</label>
+						<div class="toggle-controls">
+							<input
+								type="checkbox"
+								bind:checked={embedPreview}
+								class="toggle-checkbox"
+							/>
+						</div>
+					</div>
+				</section>
+
+				<div style="text-align: center; margin-top: 2rem;">
+					<button 
+						on:click={handleFormSubmit} 
+						class="save-button"
+						disabled={isGenerating}
+					>
+						{isGenerating ? 'Generating Link...' : 'Generate Share Link'}
+					</button>
+				</div>
+
+				{#if generatedLink}
+					<div class="success-section">
+						<h3>Your Share Link</h3>
+						<div class="link-container">
+							<input 
+								type="text" 
+								value={generatedLink} 
+								readonly 
+								class="link-input"
+							/>
+							<button 
+								on:click={() => {
+									if (browser && navigator.clipboard) {
+										navigator.clipboard.writeText(generatedLink);
+										alert('Link copied to clipboard!');
+									}
+								}}
+								class="copy-button"
+							>
+								Copy
+							</button>
+						</div>
+						<div class="share-options">
+							<a href={generatedLink} target="_blank" rel="noopener noreferrer" class="preview-button">
+								Preview Share Page
+							</a>
+						</div>
+					</div>
+				{/if}
+			</div>
+		</section>
+	{/if}
 
 	<!-- overview -->
 	<section class="section-box">
@@ -145,6 +445,11 @@
 		--muted: #8f8886;
 		--line: #3b393e;
 		--accent: #6fb3c0;
+		--dropdown-bg: #333036;
+		--dropdown-fg: #f5e5d5;
+		--error: #e57373;
+		--success: #81c784;
+		--border-color: #4a454e;
 	}
 	:global(body) {
 		margin: 0;
@@ -196,68 +501,6 @@
 		color: var(--bg);
 	}
 
-	/* form controls & sections */
-	.row {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr) auto;
-		gap: 0.6rem;
-		align-items: end;
-	}
-	label {
-		display: block;
-		font-size: 0.7rem;
-		color: var(--muted);
-		margin-bottom: 0.3rem;
-	}
-	input {
-		background: transparent;
-		border: 1px solid var(--line);
-		color: var(--fg);
-		padding: 0.4rem;
-		width: 100%;
-	}
-	button {
-		padding: 0.4rem 0.7rem;
-		border: 1px solid var(--accent);
-		background: transparent;
-		color: var(--fg);
-		cursor: pointer;
-	}
-	button:hover {
-		background: var(--accent);
-		color: var(--bg);
-	}
-	.tip {
-		font-size: 0.75rem;
-		margin-top: 0.6rem;
-		color: var(--muted);
-	}
-	.tag {
-		display: inline-block;
-		padding: 0.1rem 0.4rem;
-		border: 1px solid var(--line);
-		margin-left: 0.3rem;
-		color: var(--fg);
-	}
-	.actions {
-		display: flex;
-		gap: 0.6rem;
-		margin-bottom: 0.6rem;
-	}
-	.muted {
-		color: var(--muted);
-		font-size: 0.75rem;
-	}
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 0.85rem;
-	}
-	td {
-		padding: 0.4rem 0.6rem;
-		border: 1px solid var(--line);
-	}
-
 	/* section title-on-border layout */
 	.section-box {
 		margin: 2rem 0;
@@ -270,53 +513,360 @@
 		margin: 0;
 		padding: 0 0.5rem;
 		position: relative;
-		top: 0.7rem; /* pushes title down onto the border */
+		top: 0.7rem;
 		background: var(--bg);
 		display: inline-block;
 	}
 	.section-content {
 		border: 1px solid var(--line);
 		border-radius: 8px;
-		padding: 1.2rem;     /* more breathing room inside */
-		margin-top: 0.8rem;  /* space between title and content */
+		padding: 1.2rem;
+		margin-top: 0.8rem;
+	}
+
+	/* Dropzone styling */
+	.dropzone {
+		border: 2px dashed var(--accent);
+		border-radius: 6px;
+		padding: 2rem;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.8rem;
+		margin-bottom: 1rem;
+		background-color: rgba(111, 179, 192, 0.05);
 	}
 	.hidden-input {
-    	display: none;
-  	}
-
-  	.custom-file-btn {
-  		padding: 0.4rem 0.7rem;
-  		border: 1px solid var(--accent);
-  		background: transparent;
-  		color: var(--fg);
-  		cursor: pointer;
-  		display: inline-block;
-  		text-align: center;
+		display: none;
 	}
-
+	.custom-file-btn {
+		padding: 0.4rem 0.7rem;
+		border: 1px solid var(--accent);
+		background: transparent;
+		color: var(--fg);
+		cursor: pointer;
+		display: inline-block;
+		text-align: center;
+	}
 	.custom-file-btn:hover {
-  		background: var(--accent);
-  		color: var(--bg);
+		background: var(--accent);
+		color: var(--bg);
 	}
-	.dropzone {
-	border: 2px dashed var(--accent);
-	border-radius: 6px;
-	padding: 2rem;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	gap: 0.8rem;
-	margin-bottom: 1rem;
+	.muted {
+		color: var(--muted);
+		font-size: 0.75rem;
 	}
+	.upload-btn {
+		padding: 0.4rem 0.7rem;
+		border: 1px solid var(--accent);
+		background: transparent;
+		color: var(--fg);
+		cursor: pointer;
+		margin-top: 0.5rem;
+	}
+	.upload-btn:hover:not(:disabled) {
+		background: var(--accent);
+		color: var(--bg);
+	}
+	.upload-btn.disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	/* Quick actions - Updated styling for your files and your links buttons */
 	.quick-actions {
 		display: flex;
 		gap: 0.6rem;
 		margin-top: 0.8rem;
 	}
-	.quick-actions button {
-		flex: 1; /* equal width */
+	.action-btn {
+		flex: 1;
+		padding: 0.8rem 1.2rem;
+		border: 2px solid var(--accent);
+		background: transparent;
+		color: var(--fg);
+		cursor: pointer;
+		border-radius: 6px;
+		font-weight: bold;
+		font-size: 0.9rem;
 		text-align: center;
+		transition: all 0.2s ease;
+	}
+	.action-btn:hover {
+		background: var(--accent);
+		color: var(--bg);
+		transform: translateY(-2px);
+	}
+	.files-btn {
+		border-color: #8bc34a; /* Greenish accent for files */
+		color: #8bc34a;
+	}
+	.files-btn:hover {
+		background: #8bc34a;
+		color: var(--bg);
+	}
+	.links-btn {
+		border-color: #ff9800; /* Orange accent for links */
+		color: #ff9800;
+	}
+	.links-btn:hover {
+		background: #ff9800;
+		color: var(--bg);
 	}
 
+	/* Configuration styling */
+	.config-subsection {
+		margin: 1.5rem 0;
+	}
+	.section-subtitle {
+		font-size: 1rem;
+		text-transform: uppercase;
+		color: var(--muted);
+		margin: 0;
+		padding: 0 0.5rem;
+		position: relative;
+		top: 0.7rem;
+		background: var(--bg);
+		display: inline-block;
+	}
+
+	/* Dropdown Styling */
+	.select-wrapper {
+		position: relative;
+		width: 100%;
+		margin-top: 0.5rem;
+	}
+	.custom-select {
+		appearance: none;
+		background: var(--dropdown-bg);
+		border: 1px solid var(--line);
+		color: var(--dropdown-fg);
+		padding: 0.6rem 1rem;
+		width: 100%;
+		border-radius: 4px;
+		cursor: pointer;
+		font: inherit;
+	}
+	.custom-select:hover {
+		background: #444147;
+	}
+	.custom-select option {
+		background: var(--dropdown-bg);
+		color: var(--dropdown-fg);
+	}
+	.select-wrapper::after {
+		content: '▼';
+		font-size: 0.7rem;
+		position: absolute;
+		right: 1rem;
+		top: 50%;
+		transform: translateY(-50%);
+		pointer-events: none;
+		color: var(--muted);
+	}
+
+	/* Toggle rows styling */
+	.toggle-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 1rem 0;
+		border-bottom: 1px solid var(--line);
+	}
+	.toggle-row:last-child {
+		border-bottom: none;
+	}
+	.toggle-label-large {
+		flex: 1;
+		font-size: 1rem;
+		color: var(--fg);
+		cursor: pointer;
+		padding: 0.5rem 0;
+	}
+	.toggle-controls {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+	.toggle-checkbox {
+		width: 24px;
+		height: 24px;
+		cursor: pointer;
+		appearance: none;
+		background: var(--line);
+		border: 2px solid var(--accent);
+		border-radius: 6px;
+		position: relative;
+		transition: all 0.2s ease;
+	}
+	.toggle-checkbox:checked {
+		background: var(--accent);
+		border-color: var(--accent);
+	}
+	.toggle-checkbox:checked::after {
+		content: '✓';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		color: var(--bg);
+		font-size: 14px;
+		font-weight: bold;
+	}
+	.download-limit-input {
+		background: transparent;
+		border: 1px solid var(--line);
+		color: var(--fg);
+		padding: 0.5rem;
+		width: 80px;
+		text-align: center;
+		border-radius: 4px;
+		font-size: 1rem;
+	}
+
+	.input-group {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		margin-top: 1rem;
+	}
+	.input-group label {
+		font-size: 0.7rem;
+		color: var(--muted);
+	}
+	input[type="text"], input[type="password"] {
+		background: transparent;
+		border: 1px solid var(--line);
+		color: var(--fg);
+		padding: 0.6rem;
+		width: 100%;
+		border-radius: 4px;
+		font-size: 1rem;
+	}
+
+	.save-button {
+		padding: 0.8rem 2.5rem;
+		font-size: 1.2rem;
+		border: 2px solid var(--accent);
+		background: transparent;
+		color: var(--fg);
+		cursor: pointer;
+		border-radius: 6px;
+		font-weight: bold;
+		transition: all 0.2s ease;
+	}
+	.save-button:hover:not(:disabled) {
+		background: var(--accent);
+		color: var(--bg);
+		transform: translateY(-2px);
+	}
+	.save-button:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+		transform: none;
+	}
+
+	/* Progress bar */
+	.progress-bar {
+		width: 100%;
+		height: 8px;
+		background: var(--line);
+		border-radius: 4px;
+		overflow: hidden;
+		margin: 0.5rem 0;
+	}
+	.progress {
+		height: 100%;
+		background: var(--accent);
+		border-radius: 4px;
+		transition: width 0.3s ease;
+	}
+	.upload-status {
+		margin-top: 0.5rem;
+		color: var(--muted);
+		font-size: 0.8rem;
+	}
+
+	/* Error message */
+	.error-message {
+		background: var(--error);
+		color: var(--bg);
+		padding: 0.8rem;
+		border-radius: 8px;
+		margin: 0.5rem 0;
+		font-weight: bold;
+		font-size: 0.9rem;
+	}
+
+	/* Success section styling */
+	.success-section {
+		margin-top: 2rem;
+		padding: 2rem;
+		background: var(--success);
+		color: var(--bg);
+		border-radius: 8px;
+		text-align: center;
+	}
+	.success-section h3 {
+		margin: 0 0 1rem 0;
+		font-size: 1.2rem;
+	}
+	.link-container {
+		display: flex;
+		gap: 0.5rem;
+		margin: 1rem 0;
+	}
+	.link-input {
+		flex: 1;
+		padding: 0.8rem;
+		border: 2px solid var(--bg);
+		border-radius: 4px;
+		font-size: 1rem;
+		background: var(--bg);
+		color: var(--fg);
+	}
+	.copy-button {
+		padding: 0.8rem 1.5rem;
+		background: var(--bg);
+		color: var(--success);
+		border: 2px solid var(--bg);
+		border-radius: 4px;
+		cursor: pointer;
+		font-weight: bold;
+		transition: all 0.2s ease;
+	}
+	.copy-button:hover {
+		background: transparent;
+		color: var(--bg);
+	}
+	.share-options {
+		margin-top: 1rem;
+	}
+	.preview-button {
+		display: inline-block;
+		padding: 0.8rem 1.5rem;
+		background: var(--bg);
+		color: var(--success);
+		text-decoration: none;
+		border-radius: 4px;
+		font-weight: bold;
+		transition: all 0.2s ease;
+	}
+	.preview-button:hover {
+		background: transparent;
+		color: var(--bg);
+		border: 2px solid var(--bg);
+	}
+
+	/* Table styling */
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.85rem;
+	}
+	td {
+		padding: 0.4rem 0.6rem;
+		border: 1px solid var(--line);
+	}
 </style>
