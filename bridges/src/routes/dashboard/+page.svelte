@@ -26,7 +26,6 @@
 	let generatedLink: string = '';
 	let isGenerating: boolean = false;
 	let error: string = '';
-	let showConfigure: boolean = false;
 
 	// Convert expiration string to timestamp
 	function getExpirationTimestamp(expiration: string): number | null {
@@ -65,66 +64,143 @@
 		if (input.files && input.files[0]) {
 			selectedFile = input.files[0];
 			uploadError = '';
+			// Reset any previous generated links when a new file is selected
+			generatedLink = '';
+			error = '';
 		}
 	}
 
-	// Upload file to PocketBase
-	async function handleUpload() {
-		if (!selectedFile) {
-			uploadError = 'Please select a file first';
-			return;
+// Upload file to PocketBase
+async function handleUpload() {
+  if (!selectedFile) {
+    uploadError = 'Please select a file first';
+    return;
+  }
+
+  isUploading = true;
+  uploadProgress = 0;
+  uploadError = '';
+
+  try {
+    // Step 1: Upload the file
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    const uploadResponse = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    // Log the response status and headers
+    console.log('Upload response status:', uploadResponse.status);
+    console.log('Upload response headers:', Object.fromEntries(uploadResponse.headers.entries()));
+
+    if (!uploadResponse.ok) {
+      const errorData = await uploadResponse.json();
+      throw new Error(`Upload failed: ${errorData.error || 'Unknown error'}`);
+    }
+
+    // Log the raw response text before parsing
+    const responseText = await uploadResponse.text();
+    console.log('Raw upload response:', responseText);
+
+    // Parse the response
+    let uploadResult;
+    try {
+      uploadResult = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse JSON response:', parseError);
+      throw new Error('Invalid response from server');
+    }
+
+    console.log('Parsed upload result:', uploadResult);
+
+    // Check if we have an ID
+    if (!uploadResult.id) {
+      throw new Error('Upload succeeded but no file ID was returned');
+    }
+    
+    const fileId = uploadResult.id;
+    console.log('✅ File uploaded successfully, ID:', fileId);
+
+    // Step 2: Generate share link with configuration
+    const shareConfig = {
+      fileId: fileId,
+      expires: expires,
+      visibility: visibility,
+      password: visibility === 'password' ? password : null,
+      downloadLimitEnabled: downloadLimitEnabled,
+      downloadLimit: downloadLimitEnabled ? downloadLimit : null,
+      viewOnce: viewOnce,
+      embedPreview: embedPreview
+    };
+
+    console.log('📤 Sending share configuration:', shareConfig);
+
+    const shareResponse = await fetch('/api/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(shareConfig),
+    });
+
+    if (!shareResponse.ok) {
+      const errorData = await shareResponse.json();
+      throw new Error(`Share generation failed: ${errorData.error || 'Unknown error'}`);
+    }
+
+    const shareResult = await shareResponse.json();
+
+    if (shareResult.success) {
+      generatedLink = shareResult.link;
+      alert('Share link generated successfully!');
+      
+      // Copy to clipboard
+      if (browser && navigator.clipboard) {
+        await navigator.clipboard.writeText(generatedLink);
+        alert('Link copied to clipboard!');
+      }
+    } else {
+      throw new Error(shareResult.error || 'Failed to generate share link');
+    }
+
+  } catch (err) {
+    console.error('🚨 LINK GENERATION ERROR:', err);
+    uploadError = err instanceof Error ? err.message : 'Failed to generate share link';
+    alert('Error: ' + uploadError);
+  } finally {
+    isUploading = false;
+  }
+}
+	// Validate form before submission
+	function validateForm() {
+		if (visibility === 'password' && !password.trim()) {
+			alert('Please enter a password for password-protected sharing');
+			return false;
 		}
-
-		isUploading = true;
-		uploadProgress = 0;
-		uploadError = '';
-
-		try {
-			// Create a new record in the files collection
-			const formData = new FormData();
-			formData.append('file', selectedFile);
-
-			const response = await fetch('/api/upload', {
-				method: 'POST',
-				body: formData,
-			});
-
-			if (!response.ok) {
-				throw new Error('Upload failed');
-			}
-
-			const result = await response.json();
-			const fileId = result.id;
-
-			// Navigate to the configuration page with the file ID
-			goto(`/configure?fileId=${fileId}`);
-			
-		} catch (err) {
-			console.error('Upload error:', err);
-			uploadError = err instanceof Error ? err.message : 'Failed to upload file';
-		} finally {
-			isUploading = false;
+		if (downloadLimitEnabled && (downloadLimit <= 0 || isNaN(downloadLimit))) {
+			alert('Please enter a valid download limit (greater than 0)');
+			return false;
 		}
+		return true;
 	}
 
-	// Handle form submission and generate share link
-	async function handleSubmit() {
+	// Handle form submission with validation
+	async function handleFormSubmit() {
 		if (!selectedFile) {
 			error = 'No file selected';
 			return;
 		}
 
+		if (!validateForm()) return;
+
 		isGenerating = true;
 		error = '';
 
 		try {
-			// Get current user (if authenticated)
-			const currentUser = pb.authStore.model;
-
 			// Prepare the share record data
 			const shareData = {
 				file: selectedFile.name,
-				owner: currentUser ? currentUser.id : null,
+				owner: data.user?.id || null,
 				expires_at: getExpirationTimestamp(expires),
 				visibility: visibility,
 				password: visibility === 'password' ? password : null,
@@ -139,7 +215,7 @@
 			// Create the share record in PocketBase
 			const shareRecord = await pb.collection('shares').create(shareData);
 
-			// Generate the share link (fixed the extra space in URL)
+			// Generate the share link
 			const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
 			generatedLink = `${baseUrl}/share/${shareRecord.short_id}`;
 
@@ -159,25 +235,6 @@
 		} finally {
 			isGenerating = false;
 		}
-	}
-
-	// Validate form before submission
-	function validateForm() {
-		if (visibility === 'password' && !password.trim()) {
-			alert('Please enter a password for password-protected sharing');
-			return false;
-		}
-		if (downloadLimitEnabled && (downloadLimit <= 0 || isNaN(downloadLimit))) {
-			alert('Please enter a valid download limit (greater than 0)');
-			return false;
-		}
-		return true;
-	}
-
-	// Handle form submission with validation
-	async function handleFormSubmit() {
-		if (!validateForm()) return;
-		await handleSubmit();
 	}
 </script>
 
@@ -222,11 +279,11 @@
 				{/if}
 				
 				{#if selectedFile && !isUploading}
-					<button on:click={handleUpload} class="upload-btn">upload file</button>
+					<button on:click={handleUpload} class="upload-btn">upload & generate link</button>
 				{:else if isUploading}
 					<button disabled class="upload-btn disabled">uploading...</button>
 				{:else}
-					<button disabled class="upload-btn disabled">upload file</button>
+					<button disabled class="upload-btn disabled">select a file first</button>
 				{/if}
 			</div>
 
@@ -246,10 +303,10 @@
 		</div>
 	</section>
 
-	<!-- Configuration Section (only shown when "configure file" is clicked) -->
-	{#if showConfigure && selectedFile}
+	<!-- Configuration Section (automatically shown after file selection) -->
+	{#if selectedFile}
 		<section class="section-box">
-			<h2 class="section-title">configure file</h2>
+			<h2 class="section-title">configure sharing settings</h2>
 			
 			<div class="section-content">
 				<section class="config-subsection">
