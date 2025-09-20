@@ -1,6 +1,15 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { ClientResponseError } from 'pocketbase';
 import type { Actions } from './$types';
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = ({ locals }) => {
+    if (locals.user) {
+        throw redirect(303, '/dashboard');
+    }
+
+    return {};
+};
 
 export const actions: Actions = {
 	default: async ({ locals, request }) => {
