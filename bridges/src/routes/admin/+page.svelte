@@ -15,7 +15,7 @@
         </div>
         <form method="POST" class="row">
             <a href="/" class="muted">Home</a>
-            <button type="submit" class="muted-btn">Logout</button>
+            <button type="submit" formaction="?/logout" class="muted-btn">Logout</button>
         </form>
     </header>
 
@@ -55,8 +55,12 @@
                                 <td>@{u.username || u.email}</td>
                                 <td class="nowrap">{new Date(u.created).toLocaleDateString()}</td>
                                 <td>
-                                    {#if u.verified}
-                                        <span class="ok">verified</span>
+                                    {#if u.isVerified}
+                                        {#if u.disabled}
+                                            <span class="bad">disabled</span>
+                                        {:else}
+                                            <span class="ok">verified</span>
+                                        {/if}
                                     {:else}
                                         <span class="muted">pending</span>
                                     {/if}
@@ -70,8 +74,22 @@
                                 </td>
                                 <td class="nowrap">
                                     <a class="muted-btn" href={`/admin/users/${u.id}`}>View</a>
+
+                                    {#if !u.verified}
+                                        <form method="POST" style="display:inline;">
+                                            <input type="hidden" name="id" value={u.id} />
+                                            <button class="btn-ok" formaction="?/verify">Verify</button>
+                                        </form>
+                                    {/if}
+
                                     {#if u.id !== data.user?.id}
-                                        <button class="btn-warn" type="button" disabled>Disable</button>
+                                        <form method="POST" style="display:inline;">
+                                            <input type="hidden" name="id" value={u.id} />
+                                            <input type="hidden" name="disabled" value={u.disabled ? 'true' : 'false'} />
+                                            <button class="btn-warn" formaction="?/toggleDisable">
+                                                {u.disabled ? 'Enable' : 'Disable'}
+                                            </button>
+                                        </form>
                                     {/if}
                                 </td>
                             </tr>
@@ -88,13 +106,11 @@
 </main>
 
 <style>
-    /* maybe this will fix the input box overflowing? idk lol just test/bandaid */
-	/* update: actually maybe this is the proper way.. */
-	:global(*),
-	:global(*::before),
-	:global(*::after) {
-		box-sizing: border-box;
-	}
+    :global(*),
+    :global(*::before),
+    :global(*::after) {
+        box-sizing: border-box;
+    }
     :root {
         --bg: #232025;
         --fg: #efd5c5;
@@ -105,7 +121,6 @@
         --warn: #d09950;
         --bad: #ff7a5f;
     }
-    * { box-sizing: border-box; }
     main {
         max-width: 980px;
         margin: 6vh auto;
@@ -116,6 +131,7 @@
     h1 { font-size: 1rem; margin: 0 0 0.25rem 0; }
     .muted { color: var(--muted); }
     .ok { color: var(--ok); }
+    .bad { color: var(--bad); }
     a { color: var(--muted); text-decoration: none; }
     a:hover { color: var(--accent); }
     fieldset { border: 1px solid var(--line); padding: 1rem; margin: 2rem 0 1rem 0; }
@@ -126,6 +142,7 @@
     .muted-btn { border-color: transparent; color: var(--muted); }
     .muted-btn:hover { color: var(--accent); }
     .btn-warn { border-color: var(--warn); }
+    .btn-ok { border-color: var(--ok); }
     table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
     th, td { padding: 0.5rem 0.6rem; border: 1px solid var(--line); vertical-align: top; }
     th { color: var(--muted); text-align: left; }
