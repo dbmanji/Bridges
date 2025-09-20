@@ -3,32 +3,34 @@ import PocketBase from 'pocketbase';
 import { PB_URL } from '$env/static/private';
 
 export const handle: Handle = async ({ event, resolve }) => {
-  const pb = new PocketBase(PB_URL);
+    const pb = new PocketBase(PB_URL);
 
-  pb.authStore.loadFromCookie(event.request.headers.get('cookie') ?? '');
+    pb.authStore.loadFromCookie(event.request.headers.get('cookie') || '');
 
-  event.locals.pb = pb;
+    try {
+        if (pb.authStore.isValid) {
+            await pb.collection('users').authRefresh();
+            const user = structuredClone(pb.authStore.model);
 
-  try {
-    if (pb.authStore.isValid) {
-      await pb.collection('users').authRefresh();
+            // Block login if not verified or disabled
+            if (!user.isVerified || user.disabled) {
+                pb.authStore.clear();
+                event.locals.user = null;
+            } else {
+                event.locals.user = user;
+            }
+        } else {
+            event.locals.user = null;
+        }
+    } catch (_) {
+        pb.authStore.clear();
+        event.locals.user = null;
     }
-    event.locals.user = structuredClone(pb.authStore.record);
-  } catch {
-    pb.authStore.clear();
-    event.locals.user = null;
-  }
 
-  const response = await resolve(event, {
-    filterSerializedResponseHeaders: (name) =>
-      name === 'content-type' || name.startsWith('cache-') || name === 'etag'
-  });
+    event.locals.pb = pb;
 
-  const cookie = pb.authStore.exportToCookie({
-    httpOnly: true,
-    secure: false,
-  });
-  response.headers.append('set-cookie', cookie);
+    const response = await resolve(event);
 
-  return response;
+    response.headers.append('set-cookie', pb.authStore.exportToCookie({ secure: false }));
+    return response;
 };
